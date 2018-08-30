@@ -134,8 +134,8 @@ def euclidean_distance_check(param_input, param_cellsize=None, env_ocs=None, env
                                        env_extent.YMax - env_extent.YMin) / 250
                     return new_cellsize, new_cellsize
                 # 250 rule applied to reprojected extent (project data or extent?)
-                arcpy.Select_analysis(param_input, 'tmp.shp', '')
                 arcpy.env.extent = env_extent
+                arcpy.Select_analysis(param_input, 'tmp.shp', '')
                 arcpy.Project_management(param_input, 'tmp2.shp', env_ocs)
                 feature_extent = arcpy.Describe('tmp2.shp').extent
                 new_cellsize = min(feature_extent.XMax - feature_extent.XMin,
