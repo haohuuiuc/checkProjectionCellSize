@@ -1,7 +1,7 @@
-# File name: cal_cs.py
+# File name: sa_verify_utils.py
 # Author: Hao Hu (h.hu@esri.com)
 # Date created: 8/24/2018
-# Date last modified: 8/31/2018
+# Date last modified: 9/4/2018
 # Python Version: 3.6
 
 import arcpy
@@ -291,11 +291,6 @@ def main():
     cs_new, output_boundary = euclidean_distance_check(input_feature, env_ocs=arcpy.SpatialReference(26911),
                                       env_cellsize=cellsize_raster)
     print('The new cellsize for #2a is {}'.format(cs_new))
-    arcpy.CopyFeatures_management(output_boundary, "output3.shp")
-    # print(calculate_resolution_preserving_cellsize(cellsize_raster,
-    #                                                output_spatial_reference=arcpy.SpatialReference(26911),
-    #                                                env_extent=cellsize_raster.extent))
-
 
 
 if __name__ == "__main__":
