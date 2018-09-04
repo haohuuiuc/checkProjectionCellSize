@@ -166,8 +166,8 @@ def raster_check(input_ras_list, env_ocs=None, env_cellsize=None, env_extent=Non
             cs_new = calculate_resolution_preserving_cellsize(env_cellsize, env_ocs, env_cellsize.extent)
 
     # Calculate output boundary
-    output_boundary = update_extent_with_cellsize_snapraster(output_shape, cs_new, env_snapraster)
-    return cs_new, output_boundary
+    # output_boundary = update_extent_with_cellsize_snapraster(output_shape, cs_new, env_snapraster)
+    return cs_new, output_shape
 
 
 def feature_check(input_fc, param_cellsize=None, env_ocs=None, env_cellsize=None, env_extent=None, env_snapraster=None):
@@ -222,8 +222,8 @@ def feature_check(input_fc, param_cellsize=None, env_ocs=None, env_cellsize=None
             cs_new = calculate_resolution_preserving_cellsize(param_cellsize, env_ocs, param_cellsize.extent)
 
     # Calculate output boundary
-    output_boundary = update_extent_with_cellsize_snapraster(output_shape, cs_new, env_snapraster)
-    return cs_new, output_boundary
+    # output_boundary = update_extent_with_cellsize_snapraster(output_shape, cs_new, env_snapraster)
+    return cs_new, output_shape
 
 
 def create_raster_check(output_extent, param_cellsize=None,  env_ocs=None, env_cellsize=None, env_extent=None, env_snapraster=None):
@@ -278,19 +278,22 @@ def main():
     arcpy.env.workspace = r"C:\Users\hao9717\Documents\Esri\CellsizeRef\workspace"
     arcpy.env.overwriteOutput = True
 
-    # Local tests
-    # Test case #1a: single raster(32145), env_ocs=3857
-    input_raster = arcpy.sa.Raster(r"C:\Users\hao9717\Documents\Esri\CellsizeRef\Data\landuser")
-    cs_new, output_boundary = raster_check([input_raster], env_ocs=arcpy.SpatialReference(3857))
-    print('The new cellsize is {}'.format(cs_new))
-    arcpy.CopyFeatures_management(output_boundary, "output2.shp")
+    # # Local tests
+    # # Test case #1a: single raster(32145), env_ocs=3857
+    # input_raster = arcpy.sa.Raster(r"C:\Users\hao9717\Documents\Esri\CellsizeRef\Data\landuser")
+    # cs_new, output_boundary = raster_check([input_raster], env_ocs=arcpy.SpatialReference(3857))
+    # print('The new cellsize is {}'.format(cs_new))
+    # arcpy.CopyFeatures_management(output_boundary, "output2.shp")
+    #
+    # # Test case #2a: euclidean distance tool, feature, env_ocs=26911, env_cs=raster(3380)
+    # input_feature = r"C:\Users\hao9717\Documents\Esri\QATest\py\pydata\v107\sa\global\shapefile\rec_sites.shp"
+    # cellsize_raster = arcpy.sa.Raster(r"C:\Users\hao9717\Documents\Esri\CellsizeRef\Data\landuser_3338")
+    # cs_new, output_boundary = euclidean_distance_check(input_feature, env_ocs=arcpy.SpatialReference(26911),
+    #                                   env_cellsize=cellsize_raster)
+    # print('The new cellsize for #2a is {}'.format(cs_new))
 
-    # Test case #2a: euclidean distance tool, feature, env_ocs=26911, env_cs=raster(3380)
-    input_feature = r"C:\Users\hao9717\Documents\Esri\QATest\py\pydata\v107\sa\global\shapefile\rec_sites.shp"
-    cellsize_raster = arcpy.sa.Raster(r"C:\Users\hao9717\Documents\Esri\CellsizeRef\Data\landuser_3338")
-    cs_new, output_boundary = euclidean_distance_check(input_feature, env_ocs=arcpy.SpatialReference(26911),
-                                      env_cellsize=cellsize_raster)
-    print('The new cellsize for #2a is {}'.format(cs_new))
+    cs, b = raster_check([arcpy.sa.Raster(r"C:\Users\hao9717\Documents\ArcGIS\Projects\Testing\mask1.tif")], extent_type="intersect")
+    print(cs)
 
 
 if __name__ == "__main__":
