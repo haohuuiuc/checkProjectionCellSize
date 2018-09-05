@@ -25,7 +25,7 @@ def extent_to_polygon(extent, input_spatial_reference=None, in_ras=None):
     array = arcpy.Array([pnt1, pnt2, pnt3, pnt4])
     polygon = arcpy.Polygon(array, input_spatial_reference)
     if in_ras is not None:
-        polygon = polygon.densify("DISTANCE", in_ras.meanWidth, in_ras.meanWidth)
+        polygon = polygon.densify("DISTANCE", in_ras.meanCellWidth, in_ras.meanCellWidth)
     return polygon
 
 
@@ -88,14 +88,13 @@ def calculate_resolution_preserving_cellsize(input_ras, output_spatial_reference
     cs_y = input_ras.meanCellHeight
 
     if sr == output_spatial_reference:
-        return (cs_x + cs_y) / 2
+        return cs_x
 
-    # polygon_old = extent_to_polygon(extent, sr)
-    # polygon_new = polygon_old.densify("DISTANCE", cs_x, cs_x).projectAs(output_spatial_reference)
     polygon_new = extent_shape.projectAs(output_spatial_reference)
     area_old = extent_shape.getArea("PLANAR", "SQUAREMETERS")
     area_new = polygon_new.getArea("PLANAR", "SQUAREMETERS")
-    cs_new = math.sqrt((area_new / area_old) * cs_x * cs_y)
+    cs_new = math.sqrt((area_new / area_old) * cs_x * cs_x)
+    # cs_new = math.sqrt((area_new / area_old) * cs_x * cs_y)
     return cs_new
 
 
@@ -111,6 +110,25 @@ def raster_check(input_ras_list, env_ocs=None, env_cellsize=None, env_extent=Non
     :type extent_type: String
     :rtype: float, arcpy.Polygon
     """
+
+    # When input_ras_list is empty
+    if len(input_ras_list) == 0:
+        if env_ocs is None:
+            aprx = arcpy.mp.ArcGISProject("CURRENT")
+            sr = aprx.listMaps()[0].defaultCamera.getExtent().spatialReference
+        else:
+            sr = env_ocs
+        if type(env_cellsize) == int or type(env_cellsize) == float:
+            cs_new = env_cellsize
+        else:
+            if env_cellsize is None:
+                cs_new = calculate_resolution_preserving_cellsize(env_snapraster, sr,
+                                                                  extent_to_polygon(env_snapraster.extent,
+                                                                                    in_ras=env_snapraster))
+            else:
+                cs_new = calculate_resolution_preserving_cellsize(env_cellsize, sr,
+                            extent_to_polygon(env_cellsize.extent, in_ras=env_cellsize))
+        return cs_new, extent_to_polygon(env_extent).projectAs(sr)
 
     # Determine the output spatial reference
     if env_ocs is None:
@@ -154,11 +172,6 @@ def raster_check(input_ras_list, env_ocs=None, env_cellsize=None, env_extent=Non
             cs_new = calculate_resolution_preserving_cellsize(env_cellsize, env_ocs,
                         extent_to_polygon(env_snapraster.extent, in_ras=env_snapraster))
 
-<<<<<<< HEAD
-=======
-    # Calculate output boundary
-    # output_boundary = update_extent_with_cellsize_snapraster(output_shape, cs_new, env_snapraster)
->>>>>>> 056338ebde2d1b819fd529ce4acd8d679791c744
     return cs_new, output_shape
 
 
@@ -216,83 +229,4 @@ def feature_check(input_fc, param_cellsize=None, env_ocs=None, env_cellsize=None
             cs_new = calculate_resolution_preserving_cellsize(param_cellsize, env_ocs,
                         extent_to_polygon(param_cellsize.extent, in_ras=param_cellsize))
 
-<<<<<<< HEAD
-=======
-    # Calculate output boundary
-    # output_boundary = update_extent_with_cellsize_snapraster(output_shape, cs_new, env_snapraster)
->>>>>>> 056338ebde2d1b819fd529ce4acd8d679791c744
     return cs_new, output_shape
-
-
-def create_raster_check(output_extent, param_cellsize=None,  env_ocs=None, env_cellsize=None, env_extent=None, env_snapraster=None):
-    """
-    Calculate correct cellsize with only one raster input, can be used to verify
-    tools such as Abs, Lookup, Reclassify, Slice, etc.
-    :type input_ras: arcpy.sa.Raster
-    :type env_ocs: arcpy.SpatialReference
-    :type env_cellsize: float or arcpy.sa.Raster
-    :type env_extent: arcpy.Extent or arcpy.sa.Raster or String (path to feature data)
-    :type env_snapraster: arcpy.sa.Raster
-    :rtype: cellsize_x, cellsize_y, output_extent: float, float, arcpy.Extent
-    """
-
-
-def zonalstat_check(input_ras, env_ocs=None, env_cellsize=None, env_extent=None, env_snapraster=None):
-    """
-    Calculate correct cellsize with only one raster input, can be used to verify
-    tools such as Abs, Lookup, Reclassify, Slice, etc.
-    :type input_ras: arcpy.sa.Raster
-    :type env_ocs: arcpy.SpatialReference
-    :type env_cellsize: float or arcpy.sa.Raster
-    :type env_extent: arcpy.Extent or arcpy.sa.Raster or String (path to feature data)
-    :type env_snapraster: arcpy.sa.Raster
-    :rtype: cellsize_x, cellsize_y, output_extent: float, float, arcpy.Extent
-    """
-
-
-def euclidean_distance_check(param_input, param_cellsize=None, env_ocs=None, env_cellsize=None, env_extent=None,
-                             env_snapraster=None):
-    """
-    Calculate correct cellsize with one raster or feature input and parameter cellsize, can be used to verify
-    tools such as Euclidean Distance etc.
-    :type param_input: arcpy.sa.Raster or String (feature input path)
-    :type param_cellsize: float or arcpy.sa.Raster
-    :type env_ocs: arcpy.SpatialReference
-    :type env_cellsize: float or arcpy.sa.Raster
-    :type env_extent: arcpy.Extent or arcpy.sa.Raster or String (path to feature data)
-    :type env_snapraster: arcpy.sa.Raster
-    :rtype: float, arcpy.Polygon
-    """
-    if type(param_input) == arcpy.sa.Raster:
-        if param_cellsize:
-            return raster_check([param_input], env_ocs, param_cellsize, env_extent, env_snapraster)
-        return raster_check([param_input], env_ocs, env_cellsize, env_extent, env_snapraster)
-    else:
-        return feature_check(param_input, param_cellsize, env_ocs, env_cellsize, env_extent, env_snapraster)
-
-
-def main():
-    # environment settings
-    arcpy.env.workspace = r"C:\Users\hao9717\Documents\Esri\CellsizeRef\workspace"
-    arcpy.env.overwriteOutput = True
-
-    # # Local tests
-    # # Test case #1a: single raster(32145), env_ocs=3857
-    # input_raster = arcpy.sa.Raster(r"C:\Users\hao9717\Documents\Esri\CellsizeRef\Data\landuser")
-    # cs_new, output_boundary = raster_check([input_raster], env_ocs=arcpy.SpatialReference(3857))
-    # print('The new cellsize is {}'.format(cs_new))
-    # arcpy.CopyFeatures_management(output_boundary, "output2.shp")
-    #
-    # # Test case #2a: euclidean distance tool, feature, env_ocs=26911, env_cs=raster(3380)
-    # input_feature = r"C:\Users\hao9717\Documents\Esri\QATest\py\pydata\v107\sa\global\shapefile\rec_sites.shp"
-    # cellsize_raster = arcpy.sa.Raster(r"C:\Users\hao9717\Documents\Esri\CellsizeRef\Data\landuser_3338")
-    # cs_new, output_boundary = euclidean_distance_check(input_feature, env_ocs=arcpy.SpatialReference(26911),
-    #                                   env_cellsize=cellsize_raster)
-    # print('The new cellsize for #2a is {}'.format(cs_new))
-
-    cs, b = raster_check([arcpy.sa.Raster(r"C:\Users\hao9717\Documents\ArcGIS\Projects\Testing\mask1.tif")], extent_type="intersect")
-    print(cs)
-
-
-if __name__ == "__main__":
-    main()
