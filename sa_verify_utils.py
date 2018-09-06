@@ -1,7 +1,7 @@
 # File name: sa_verify_utils.py
 # Author: Hao Hu (h.hu@esri.com)
 # Date created: 8/24/2018
-# Date last modified: 9/4/2018
+# Date last modified: 9/5/2018
 # Python Version: 3.6
 
 import arcpy
@@ -75,7 +75,7 @@ def calculate_output_extent_union(input_list, output_spatial_reference=None):
                                           YMax=max(map(lambda x: x.YMax, extent_list))), output_spatial_reference)
 
 
-def calculate_resolution_preserving_cellsize(input_ras, output_spatial_reference, extent_shape):
+def calculate_new_cellsize(input_ras, output_spatial_reference, extent_shape):
     """
     Calculate resolution preserved cellsize when project raster to a different coordinate system
     :type input_ras: arcpy.sa.Raster
@@ -90,11 +90,43 @@ def calculate_resolution_preserving_cellsize(input_ras, output_spatial_reference
     if sr == output_spatial_reference:
         return cs_x
 
-    polygon_new = extent_shape.projectAs(output_spatial_reference)
-    area_old = extent_shape.getArea("PLANAR", "SQUAREMETERS")
-    area_new = polygon_new.getArea("PLANAR", "SQUAREMETERS")
-    cs_new = math.sqrt((area_new / area_old) * cs_x * cs_x)
-    # cs_new = math.sqrt((area_new / area_old) * cs_x * cs_y)
+    if arcpy.env.cellSizeProjectionMethod == "PRESERVE_RESOLUTION":
+        polygon_new = extent_shape.projectAs(output_spatial_reference)
+        area_old = extent_shape.getArea("PLANAR", "SQUAREMETERS")
+        area_new = polygon_new.getArea("PLANAR", "SQUAREMETERS")
+        cs_new = math.sqrt((area_new / area_old) * cs_x * cs_x)
+        # cs_new = math.sqrt((area_new / area_old) * cs_x * cs_y)
+    elif arcpy.env.cellSizeProjectionMethod == "CENTER_OF_EXTENT":
+        x, y = extent_shape.centroid.X, extent_shape.centroid.Y
+        pnt = arcpy.PointGeometry(arcpy.Point(x, y), sr)
+        pnt_n = arcpy.PointGeometry(arcpy.Point(x + cs_x, y), sr)
+        pnt_s = arcpy.PointGeometry(arcpy.Point(x - cs_x, y), sr)
+        pnt_w = arcpy.PointGeometry(arcpy.Point(x, y - cs_x), sr)
+        pnt_e = arcpy.PointGeometry(arcpy.Point(x, y + cs_x), sr)
+        pnt_proj = pnt.projectAs(output_spatial_reference)
+        cs_new = sum(map(lambda x: x.projectAs(output_spatial_reference).distanceTo(pnt_proj),
+                         [pnt_n, pnt_s, pnt_w, pnt_e])) / 4
+    else:
+        if sr.type != output_spatial_reference.type:
+            extent = extent_shape.extent
+            pnt_tl = arcpy.PointGeometry(arcpy.Point(extent.XMin, extent.YMax), sr)
+            pnt_tr = arcpy.PointGeometry(arcpy.Point(extent.XMax, extent.YMax), sr)
+            pnt_bl = arcpy.PointGeometry(arcpy.Point(extent.XMin, extent.YMin), sr)
+            pnt_br = arcpy.PointGeometry(arcpy.Point(extent.XMax, extent.YMin), sr)
+            dist_old = (pnt_tl.distanceTo(pnt_br) + pnt_bl.distanceTo(pnt_tr)) / 2
+            pnt_tl_proj = pnt_tl.projectAs(output_spatial_reference)
+            pnt_tr_proj = pnt_tr.projectAs(output_spatial_reference)
+            pnt_bl_proj = pnt_bl.projectAs(output_spatial_reference)
+            pnt_br_proj = pnt_br.projectAs(output_spatial_reference)
+            dist_new = (pnt_tl_proj.distanceTo(pnt_br_proj) + pnt_tr_proj.distanceTo(pnt_bl_proj)) / 2
+            cs_new = cs_x * dist_new / dist_old
+        else:
+            if sr.linearUnitName == 'Meter' and output_spatial_reference.linearUnitName == 'Feet':
+                cs_new = cs_x * 3.28084
+            elif sr.linearUnitName == 'Feet' and output_spatial_reference.linearUnitName == 'Meter':
+                cs_new = cs_x / 3.28084
+            else:
+                cs_new = cs_x
     return cs_new
 
 
@@ -122,11 +154,11 @@ def raster_check(input_ras_list, env_ocs=None, env_cellsize=None, env_extent=Non
             cs_new = env_cellsize
         else:
             if env_cellsize is None:
-                cs_new = calculate_resolution_preserving_cellsize(env_snapraster, sr,
+                cs_new = calculate_new_cellsize(env_snapraster, sr,
                                                                   extent_to_polygon(env_snapraster.extent,
                                                                                     in_ras=env_snapraster))
             else:
-                cs_new = calculate_resolution_preserving_cellsize(env_cellsize, sr,
+                cs_new = calculate_new_cellsize(env_cellsize, sr,
                             extent_to_polygon(env_cellsize.extent, in_ras=env_cellsize))
         return cs_new, extent_to_polygon(env_extent).projectAs(sr)
 
@@ -143,34 +175,34 @@ def raster_check(input_ras_list, env_ocs=None, env_cellsize=None, env_extent=Non
         output_shape = extent_to_polygon(env_extent.projectAs(env_ocs))
 
     # Calculate new cell size
-    if env_cellsize is None or env_cellsize == "MAXOF":  # Cell size is specified implicitly
+    if env_cellsize is None or (type(env_cellsize) == str and env_cellsize == "MAXOF"):  # Cell size is specified implicitly
         if env_snapraster is None:
             if len(input_ras_list) == 1:
-                cs_new = max(map(lambda x: calculate_resolution_preserving_cellsize(x, env_ocs,
+                cs_new = max(map(lambda x: calculate_new_cellsize(x, env_ocs,
                         extent_to_polygon(input_ras_list[0].extent, in_ras=input_ras_list[0])), input_ras_list))
             else:
-                cs_new = max(map(lambda x: calculate_resolution_preserving_cellsize(
+                cs_new = max(map(lambda x: calculate_new_cellsize(
                     x, env_ocs, output_shape.projectAs(x.spatialReference)), input_ras_list))
         else:
-            cs_new = max(map(lambda x: calculate_resolution_preserving_cellsize(x, env_ocs, env_snapraster.extent),
+            cs_new = max(map(lambda x: calculate_new_cellsize(x, env_ocs, env_snapraster.extent),
                              input_ras_list))
-    elif env_cellsize == "MINOF":  # Cell size is specified implicitly
+    elif type(env_cellsize) == str and env_cellsize == "MINOF":  # Cell size is specified implicitly
         if env_snapraster is None:
             if len(input_ras_list) == 1:
-                cs_new = min(map(lambda x: calculate_resolution_preserving_cellsize(x, env_ocs,
+                cs_new = min(map(lambda x: calculate_new_cellsize(x, env_ocs,
                         extent_to_polygon(input_ras_list[0].extent, in_ras=input_ras_list[0])), input_ras_list))
             else:
-                cs_new = min(map(lambda x: calculate_resolution_preserving_cellsize(
+                cs_new = min(map(lambda x: calculate_new_cellsize(
                     x, env_ocs, output_shape.projectAs(x.spatialReference)), input_ras_list))
         else:
-            cs_new = min(map(lambda x: calculate_resolution_preserving_cellsize(x, env_ocs,
+            cs_new = min(map(lambda x: calculate_new_cellsize(x, env_ocs,
                         extent_to_polygon(env_snapraster.extent, in_ras=env_snapraster)), input_ras_list))
     else:  # Cell size is specified explicitly
         if type(env_cellsize) == int or type(env_cellsize) == float:
             cs_new = env_cellsize
         else:
-            cs_new = calculate_resolution_preserving_cellsize(env_cellsize, env_ocs,
-                        extent_to_polygon(env_snapraster.extent, in_ras=env_snapraster))
+            cs_new = calculate_new_cellsize(env_cellsize, env_ocs,
+                        extent_to_polygon(env_cellsize.extent, in_ras=env_cellsize))
 
     return cs_new, output_shape
 
@@ -195,8 +227,8 @@ def feature_check(input_fc, param_cellsize=None, env_ocs=None, env_cellsize=None
     # Get env_extent and calculate output_extent
     if env_extent is None:
         env_extent = arcpy.Describe(input_fc).extent
-    output_shape = extent_to_polygon(env_extent.projectAs(env_ocs))
 
+    output_shape = extent_to_polygon(get_extent(input_fc, output_spatial_reference=env_ocs))
     # Calculate new cell size
     if param_cellsize is None:  # Parameter cell size is specified implicitly
         if env_cellsize is None:  # Environment cell size is specified implicitly
@@ -214,19 +246,20 @@ def feature_check(input_fc, param_cellsize=None, env_ocs=None, env_cellsize=None
                              / 250
                     arcpy.gp.clearEnvironment("extent")
             else:
-                cs_new = calculate_resolution_preserving_cellsize(env_snapraster, env_ocs,
+                cs_new = calculate_new_cellsize(env_snapraster, env_ocs,
                             extent_to_polygon(env_snapraster.extent, in_ras=env_snapraster))
         else:  # Environment cell size is specified explicitly
             if type(env_cellsize) == int or type(env_cellsize) == float:
                 cs_new = env_cellsize
             else:
-                cs_new = calculate_resolution_preserving_cellsize(env_cellsize, env_ocs,
+                cs_new = calculate_new_cellsize(env_cellsize, env_ocs,
                             extent_to_polygon(env_cellsize.extent, in_ras=env_cellsize))
     else:  # Parameter cell size is specified explicitly
         if type(param_cellsize) == int or type(param_cellsize) == float:
             cs_new = param_cellsize
         else:
-            cs_new = calculate_resolution_preserving_cellsize(param_cellsize, env_ocs,
+            cs_new = calculate_new_cellsize(param_cellsize, env_ocs,
                         extent_to_polygon(param_cellsize.extent, in_ras=param_cellsize))
 
     return cs_new, output_shape
+
