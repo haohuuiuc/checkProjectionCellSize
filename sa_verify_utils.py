@@ -1,7 +1,7 @@
 # File name: sa_verify_utils.py
 # Author: Hao Hu (h.hu@esri.com)
 # Date created: 8/24/2018
-# Date last modified: 9/5/2018
+# Date last modified: 9/6/2018
 # Python Version: 3.6
 
 import arcpy
@@ -121,9 +121,9 @@ def calculate_new_cellsize(input_ras, output_spatial_reference, extent_shape):
             dist_new = (pnt_tl_proj.distanceTo(pnt_br_proj) + pnt_tr_proj.distanceTo(pnt_bl_proj)) / 2
             cs_new = cs_x * dist_new / dist_old
         else:
-            if sr.linearUnitName == 'Meter' and output_spatial_reference.linearUnitName == 'Feet':
+            if sr.linearUnitName == 'Meter' and output_spatial_reference.linearUnitName in ['Foot', 'Foot_US']:
                 cs_new = cs_x * 3.28084
-            elif sr.linearUnitName == 'Feet' and output_spatial_reference.linearUnitName == 'Meter':
+            elif sr.linearUnitName in ['Foot', 'Foot_US'] and output_spatial_reference.linearUnitName == 'Meter':
                 cs_new = cs_x / 3.28084
             else:
                 cs_new = cs_x
@@ -154,8 +154,7 @@ def raster_check(input_ras_list, env_ocs=None, env_cellsize=None, env_extent=Non
             cs_new = env_cellsize
         else:
             if env_cellsize is None:
-                cs_new = calculate_new_cellsize(env_snapraster, sr,
-                                                                  extent_to_polygon(env_snapraster.extent,
+                cs_new = calculate_new_cellsize(env_snapraster, sr, extent_to_polygon(env_snapraster.extent,
                                                                                     in_ras=env_snapraster))
             else:
                 cs_new = calculate_new_cellsize(env_cellsize, sr,
@@ -198,7 +197,7 @@ def raster_check(input_ras_list, env_ocs=None, env_cellsize=None, env_extent=Non
             cs_new = min(map(lambda x: calculate_new_cellsize(x, env_ocs,
                         extent_to_polygon(env_snapraster.extent, in_ras=env_snapraster)), input_ras_list))
     else:  # Cell size is specified explicitly
-        if type(env_cellsize) == int or type(env_cellsize) == float:
+        if type(env_cellsize) == int or type(env_cellsize) == float or env_cellsize.replace('.', '', 1).isdigit():
             cs_new = env_cellsize
         else:
             cs_new = calculate_new_cellsize(env_cellsize, env_ocs,
@@ -238,13 +237,9 @@ def feature_check(input_fc, param_cellsize=None, env_ocs=None, env_cellsize=None
                     cs_new = min(env_extent.XMax - env_extent.XMin, env_extent.YMax - env_extent.YMin) / 250
                 else:
                     # 250 rule applied to reprojected extent (project data or extent?)
-                    arcpy.env.extent = env_extent
-                    arcpy.Select_analysis(input_fc, 'tmp.shp', '')
-                    arcpy.Project_management(input_fc, 'tmp2.shp', env_ocs)
-                    feature_extent = arcpy.Describe('tmp2.shp').extent
+                    feature_extent = env_extent.projectAs(env_ocs)
                     cs_new = min(feature_extent.XMax - feature_extent.XMin, feature_extent.YMax - feature_extent.YMin)\
                              / 250
-                    arcpy.gp.clearEnvironment("extent")
             else:
                 cs_new = calculate_new_cellsize(env_snapraster, env_ocs,
                             extent_to_polygon(env_snapraster.extent, in_ras=env_snapraster))
@@ -262,4 +257,3 @@ def feature_check(input_fc, param_cellsize=None, env_ocs=None, env_cellsize=None
                         extent_to_polygon(param_cellsize.extent, in_ras=param_cellsize))
 
     return cs_new, output_shape
-
