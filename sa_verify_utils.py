@@ -1,7 +1,7 @@
 # File name: sa_verify_utils.py
 # Author: Hao Hu (h.hu@esri.com)
 # Date created: 8/24/2018
-# Date last modified: 9/6/2018
+# Date last modified: 9/11/2018
 # Python Version: 3.6
 
 import arcpy
@@ -92,17 +92,31 @@ def calculate_new_cellsize(input_ras, output_spatial_reference, extent_shape):
 
     if arcpy.env.cellSizeProjectionMethod == "PRESERVE_RESOLUTION":
         polygon_new = extent_shape.projectAs(output_spatial_reference)
-        area_old = extent_shape.getArea("PLANAR", "SQUAREMETERS")
-        area_new = polygon_new.getArea("PLANAR", "SQUAREMETERS")
+        if extent_shape.spatialReference.type == 'Projected':
+            if extent_shape.spatialReference.linearUnitCode == 9003:
+                area_old = extent_shape.getArea("PLANAR", "SQUAREFEET")
+            else:
+                area_old = extent_shape.getArea("PLANAR", "SQUAREMETERS")
+        else:
+            area_old = extent_shape.getArea("PLANAR")
+        if polygon_new.spatialReference.type == 'Projected':
+            if polygon_new.spatialReference.linearUnitCode == 9003:
+                area_new = polygon_new.getArea("PLANAR", "SQUAREFEET")
+            else:
+                area_new = polygon_new.getArea("PLANAR", "SQUAREMETERS")
+        else:
+            area_new = polygon_new.getArea("PLANAR")
+
         cs_new = math.sqrt((area_new / area_old) * cs_x * cs_x)
+
         # cs_new = math.sqrt((area_new / area_old) * cs_x * cs_y)
     elif arcpy.env.cellSizeProjectionMethod == "CENTER_OF_EXTENT":
         x, y = extent_shape.centroid.X, extent_shape.centroid.Y
         pnt = arcpy.PointGeometry(arcpy.Point(x, y), sr)
         pnt_n = arcpy.PointGeometry(arcpy.Point(x + cs_x, y), sr)
         pnt_s = arcpy.PointGeometry(arcpy.Point(x - cs_x, y), sr)
-        pnt_w = arcpy.PointGeometry(arcpy.Point(x, y - cs_x), sr)
-        pnt_e = arcpy.PointGeometry(arcpy.Point(x, y + cs_x), sr)
+        pnt_w = arcpy.PointGeometry(arcpy.Point(x, y - cs_y), sr)
+        pnt_e = arcpy.PointGeometry(arcpy.Point(x, y + cs_y), sr)
         pnt_proj = pnt.projectAs(output_spatial_reference)
         cs_new = sum(map(lambda x: x.projectAs(output_spatial_reference).distanceTo(pnt_proj),
                          [pnt_n, pnt_s, pnt_w, pnt_e])) / 4
@@ -113,13 +127,17 @@ def calculate_new_cellsize(input_ras, output_spatial_reference, extent_shape):
             pnt_tr = arcpy.PointGeometry(arcpy.Point(extent.XMax, extent.YMax), sr)
             pnt_bl = arcpy.PointGeometry(arcpy.Point(extent.XMin, extent.YMin), sr)
             pnt_br = arcpy.PointGeometry(arcpy.Point(extent.XMax, extent.YMin), sr)
-            dist_old = (pnt_tl.distanceTo(pnt_br) + pnt_bl.distanceTo(pnt_tr)) / 2
             pnt_tl_proj = pnt_tl.projectAs(output_spatial_reference)
             pnt_tr_proj = pnt_tr.projectAs(output_spatial_reference)
             pnt_bl_proj = pnt_bl.projectAs(output_spatial_reference)
             pnt_br_proj = pnt_br.projectAs(output_spatial_reference)
-            dist_new = (pnt_tl_proj.distanceTo(pnt_br_proj) + pnt_tr_proj.distanceTo(pnt_bl_proj)) / 2
-            cs_new = cs_x * dist_new / dist_old
+            d1 = pnt_tl_proj.distanceTo(pnt_tr_proj) / pnt_tl.distanceTo(pnt_tr)
+            d2 = pnt_tl_proj.distanceTo(pnt_bl_proj) / pnt_tl.distanceTo(pnt_bl)
+            d3 = pnt_tl_proj.distanceTo(pnt_br_proj) / pnt_tl.distanceTo(pnt_br)
+            d4 = pnt_bl_proj.distanceTo(pnt_br_proj) / pnt_bl.distanceTo(pnt_br)
+            d5 = pnt_bl_proj.distanceTo(pnt_tr_proj) / pnt_bl.distanceTo(pnt_tr)
+            d6 = pnt_tr_proj.distanceTo(pnt_br_proj) / pnt_tr.distanceTo(pnt_br)
+            cs_new = cs_x * (d1 + d2 + d3 + d4 + d5 + d6) / 6
         else:
             if sr.linearUnitName == 'Meter' and output_spatial_reference.linearUnitName in ['Foot', 'Foot_US']:
                 cs_new = cs_x * 3.28084
@@ -183,7 +201,8 @@ def raster_check(input_ras_list, env_ocs=None, env_cellsize=None, env_extent=Non
                 cs_new = max(map(lambda x: calculate_new_cellsize(
                     x, env_ocs, output_shape.projectAs(x.spatialReference)), input_ras_list))
         else:
-            cs_new = max(map(lambda x: calculate_new_cellsize(x, env_ocs, env_snapraster.extent),
+            cs_new = max(map(lambda x: calculate_new_cellsize(x, env_ocs, extent_to_polygon(env_snapraster.extent,
+                                                                in_ras=env_snapraster).projectAs(x.spatialReference)),
                              input_ras_list))
     elif type(env_cellsize) == str and env_cellsize == "MINOF":  # Cell size is specified implicitly
         if env_snapraster is None:
@@ -195,9 +214,11 @@ def raster_check(input_ras_list, env_ocs=None, env_cellsize=None, env_extent=Non
                     x, env_ocs, output_shape.projectAs(x.spatialReference)), input_ras_list))
         else:
             cs_new = min(map(lambda x: calculate_new_cellsize(x, env_ocs,
-                        extent_to_polygon(env_snapraster.extent, in_ras=env_snapraster)), input_ras_list))
+                        extent_to_polygon(env_snapraster.extent, in_ras=env_snapraster).projectAs(x.spatialReference)),
+                        input_ras_list))
     else:  # Cell size is specified explicitly
-        if type(env_cellsize) == int or type(env_cellsize) == float or env_cellsize.replace('.', '', 1).isdigit():
+        if type(env_cellsize) == int or type(env_cellsize) == float or type(env_cellsize) == str and \
+                env_cellsize.replace('.', '', 1).isdigit():
             cs_new = env_cellsize
         else:
             cs_new = calculate_new_cellsize(env_cellsize, env_ocs,
@@ -257,3 +278,9 @@ def feature_check(input_fc, param_cellsize=None, env_ocs=None, env_cellsize=None
                         extent_to_polygon(param_cellsize.extent, in_ras=param_cellsize))
 
     return cs_new, output_shape
+
+def main():
+    # Write test cases here
+
+if __name__ == "__main__":
+     main()
