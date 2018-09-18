@@ -1,4 +1,13 @@
-.idea/
-*.xml
+# Bye-compiled /optimzed / DLL files
 __pycache__/
+*.py[cod]
+*$py.class
+
+# pycharm settings
+.idea/
+
+# toolbox xml
+*.xml
+
+# toolbox python
 *.pyt
