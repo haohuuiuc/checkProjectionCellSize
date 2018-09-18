@@ -279,6 +279,7 @@ def feature_check(input_fc, param_cellsize=None, env_ocs=None, env_cellsize=None
 
     return cs_new, output_shape
 
+
 def main():
     # Write test cases here
 
